@@ -12,12 +12,20 @@ namespace ReportManager
     public class ReportManager
     {
         private List<Report> reports;
-        private readonly string filePath = "reports.txt";
+        private readonly string _filePath;
+        private readonly object _fileLock = new object();
 
         public IReadOnlyList<Report> Reports => reports.AsReadOnly();
 
-        public ReportManager()
+        // Конструктор по умолчанию
+        public ReportManager() : this("reports.txt")
         {
+        }
+
+        // Конструктор с возможностью указать путь к файлу (для тестов)
+        public ReportManager(string filePath)
+        {
+            _filePath = filePath;
             reports = new List<Report>();
             LoadReports();
         }
@@ -68,92 +76,122 @@ namespace ReportManager
             if (string.IsNullOrWhiteSpace(searchTerm))
                 return new List<Report>(reports);
 
+            // Для .NET Framework 4.7.2 используем ToLowerInvariant() для case-insensitive поиска
+            string searchLower = searchTerm.ToLowerInvariant();
+
             return reports.Where(r =>
-                r.Title.IndexOf(searchTerm, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                r.Content.IndexOf(searchTerm, StringComparison.OrdinalIgnoreCase) >= 0)
+                r.Title.ToLowerInvariant().Contains(searchLower) ||
+                r.Content.ToLowerInvariant().Contains(searchLower))
                 .ToList();
         }
 
         private void SaveReports()
         {
-            try
+            lock (_fileLock)
             {
-                var lines = reports.Select(r =>
-                    $"{EscapeString(r.Title)}|{EscapeString(r.Content)}|{r.CreationDate:yyyy-MM-dd HH:mm:ss}");
-                File.WriteAllLines(filePath, lines);
-            }
-            catch (Exception ex)
-            {
-                throw new IOException("Ошибка при сохранении отчетов", ex);
+                try
+                {
+                    var lines = reports.Select(r =>
+                        $"{EscapeString(r.Title)}|{EscapeString(r.Content)}|{r.CreationDate:yyyy-MM-dd HH:mm:ss}");
+                    File.WriteAllLines(_filePath, lines);
+                }
+                catch (Exception ex)
+                {
+                    throw new IOException("Ошибка при сохранении отчетов", ex);
+                }
             }
         }
 
         private void LoadReports()
         {
-            try
+            lock (_fileLock)
             {
-                if (!File.Exists(filePath))
-                    return;
-
-                var lines = File.ReadAllLines(filePath);
-                foreach (var line in lines)
+                try
                 {
-                    var parts = ParseLine(line);
-                    if (parts.Length == 3)
+                    if (!File.Exists(_filePath))
+                        return;
+
+                    var lines = File.ReadAllLines(_filePath);
+                    reports.Clear();
+
+                    foreach (var line in lines)
                     {
-                        if (DateTime.TryParse(parts[2], out DateTime creationDate))
+                        var parts = ParseLine(line);
+                        if (parts.Length == 3)
                         {
-                            reports.Add(new Report(
-                                UnescapeString(parts[0]),
-                                UnescapeString(parts[1]),
-                                creationDate));
+                            if (DateTime.TryParse(parts[2], out DateTime creationDate))
+                            {
+                                reports.Add(new Report(
+                                    UnescapeString(parts[0]),
+                                    UnescapeString(parts[1]),
+                                    creationDate));
+                            }
                         }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                throw new IOException("Ошибка при загрузке отчетов", ex);
+                catch (Exception ex)
+                {
+                    throw new IOException("Ошибка при загрузке отчетов", ex);
+                }
             }
         }
 
         private string EscapeString(string input)
         {
-            return input.Replace("|", "\\|").Replace("\n", "\\n");
+            if (string.IsNullOrEmpty(input))
+                return string.Empty;
+
+            // Экранируем специальные символы в правильном порядке
+            // Сначала экранируем обратный слеш, затем разделитель и переводы строк
+            return input
+                .Replace("\\", "\\\\")    // Экранируем обратный слеш
+                .Replace("|", "\\|")       // Экранируем разделитель
+                .Replace("\n", "\\n")      // Экранируем перевод строки
+                .Replace("\r", "\\r");     // Экранируем возврат каретки
         }
 
         private string UnescapeString(string input)
         {
-            return input.Replace("\\|", "|").Replace("\\n", "\n");
+            if (string.IsNullOrEmpty(input))
+                return string.Empty;
+
+            // Восстанавливаем символы в обратном порядке
+            return input
+                .Replace("\\n", "\n")      // Восстанавливаем перевод строки
+                .Replace("\\r", "\r")      // Восстанавливаем возврат каретки
+                .Replace("\\|", "|")       // Восстанавливаем разделитель
+                .Replace("\\\\", "\\");    // Восстанавливаем обратный слеш
         }
 
         private string[] ParseLine(string line)
         {
             var parts = new List<string>();
             var current = new System.Text.StringBuilder();
-            bool escape = false;
+            int i = 0;
 
-            foreach (char c in line)
+            while (i < line.Length)
             {
-                if (escape)
+                if (line[i] == '\\' && i + 1 < line.Length)
                 {
-                    current.Append(c);
-                    escape = false;
+                    // Пропускаем экранирующий символ и добавляем следующий символ как есть
+                    current.Append(line[i + 1]);
+                    i += 2;
                 }
-                else if (c == '\\')
+                else if (line[i] == '|')
                 {
-                    escape = true;
-                }
-                else if (c == '|')
-                {
+                    // Найден разделитель, добавляем текущую часть
                     parts.Add(current.ToString());
                     current.Clear();
+                    i++;
                 }
                 else
                 {
-                    current.Append(c);
+                    current.Append(line[i]);
+                    i++;
                 }
             }
+
+            // Добавляем последнюю часть
             parts.Add(current.ToString());
 
             return parts.ToArray();
