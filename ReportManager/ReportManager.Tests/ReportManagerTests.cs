@@ -247,7 +247,7 @@
             manager1.AddReport(report1);
             manager1.AddReport(report2);
 
-            // Act - создаем новый менеджер с тем же файлом
+            // Act
             var manager2 = new ReportManager(_testFilePath);
 
             // Assert

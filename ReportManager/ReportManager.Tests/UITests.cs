@@ -60,7 +60,7 @@ namespace ReportManager.Tests
             var deleteButton = GetControl<Button>("deleteButton", _form);
             var viewButton = GetControl<Button>("viewButton", _form);
 
-            // Assert - проверяем, что кнопки находятся под списком
+            // Assert
             if (listBox != null && addButton != null)
             {
                 Assert.IsTrue(addButton.Top > listBox.Bottom,
@@ -78,8 +78,6 @@ namespace ReportManager.Tests
         [TestMethod]
         public void AllControls_AreAccessible()
         {
-            // Проверяем, что все основные контролы доступны
-            // Используем явное указание типов вместо неявно типизированного массива
             Control[] controls = new Control[]
             {
                 GetControl<ListBox>("reportsListBox", _form),
@@ -97,12 +95,8 @@ namespace ReportManager.Tests
             }
         }
 
-        /// <summary>
-        /// Вспомогательный метод для получения контрола по имени
-        /// </summary>
         private T GetControl<T>(string name, Form form) where T : Control
         {
-            // Ищем через рефлексию
             var fieldInfo = form.GetType().GetField(name,
                 BindingFlags.NonPublic | BindingFlags.Instance |
                 BindingFlags.Public | BindingFlags.Static);
@@ -112,7 +106,6 @@ namespace ReportManager.Tests
                 return (T)fieldInfo.GetValue(form);
             }
 
-            // Если не нашли через рефлексию, ищем в коллекции Controls
             foreach (Control control in form.Controls)
             {
                 if (control.Name == name && control is T)

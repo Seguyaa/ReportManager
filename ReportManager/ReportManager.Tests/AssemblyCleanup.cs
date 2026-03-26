@@ -6,7 +6,6 @@
         [AssemblyCleanup]
         public static void Cleanup()
         {
-            // Очищаем тестовую директорию после всех тестов
             TestHelpers.CleanupTestDirectory();
         }
     }
